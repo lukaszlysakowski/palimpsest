@@ -1,0 +1,5 @@
+renders/
+experiments/
+.claude/
+.DS_Store
+node_modules/
