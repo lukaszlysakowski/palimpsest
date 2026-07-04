@@ -7,6 +7,7 @@ const MARGIN = { x: 0.08 * PW, top: 0.10 * PH, bot: 0.10 * PH };
 const PAPER = '#F7E6D4', INK = '#1A1613', RED = '#A93B2A';
 
 let state = { masterSeed: 0, layers: [], rubrication: [] };
+const SKIP_CHANCE = [0.40, 0.20, 0.05]; // Light / Medium / Dense — from Field Script densityOptions
 let ui = {
     layerCount: 'random',   // '2' | '3' | '4' | 'random'
     rotationPool: 'classic',// 'classic' | 'diagonal' | 'mixed'
@@ -166,6 +167,15 @@ function bezierOutsideMasks(seg, polys) {
 
 const FRAME = Math.ceil(Math.sqrt(PW * PW + PH * PH)); // 2714 — covers any rotation
 
+// Wave frequency ranges per level (None/Sparse/Medium/Busy), from Field Script
+// waveOptions (asemic_writing/index.js lines 39-44).
+const WAVE_FREQ_RANGES = [
+    { freqMin: 0,   freqMax: 0   },
+    { freqMin: 0.8, freqMax: 1.5 },
+    { freqMin: 1.5, freqMax: 3   },
+    { freqMin: 3,   freqMax: 5   }
+];
+
 function toPage(L, x, y) {
     // local frame is a FRAME×FRAME square centred on the page centre
     let dx = x - FRAME / 2, dy = y - FRAME / 2;
@@ -177,12 +187,17 @@ function makeLayer(idx, seed, rotation, coverage) {
     let L = {
         idx, seed, rotation, coverage,
         frame: { size: FRAME },
-        waveFreq: [0, 2, 4, 7][ui.wave] + Math.floor(random(0, 2)),
+        waveFreq: 0,
         phase: random(TWO_PI),
         wordNoiseOffset: random(1000),
         useBezier: random() < 0.6,
         cells: [], segments: [], maskPolys: []
     };
+    // waveFreq is scaled by FRAME/PH (~1.25) to compensate for the sine running
+    // over the larger generation frame, so on-page band count matches the
+    // original Field Script's on-canvas count.
+    let { freqMin, freqMax } = WAVE_FREQ_RANGES[ui.wave];
+    L.waveFreq = random(freqMin, freqMax) * (FRAME / PH);
     // coverage sub-region (page space): a random rect occupying `coverage` of the writable area
     let wx = MARGIN.x, wy = MARGIN.top, ww = PW - 2 * MARGIN.x, wh = PH - MARGIN.top - MARGIN.bot;
     let rw = ww * Math.sqrt(coverage), rh = wh * Math.sqrt(coverage);
@@ -420,7 +435,16 @@ function generateLayerContentOnce(L) {
         }
     }
     for (let cell of L.cells) {
-        if (cell.density * cell.wordWeight < 0.18) continue; // gaps between words
+        // Original Field Script gates (asemic_writing/index.js lines 683-699):
+        // per-density skip chance, then a band-density gate, then a word-gap gate.
+        if (random() < SKIP_CHANCE[ui.density]) continue;
+
+        let sizeRatio = cell.size / (FRAME / 16);
+        let bandThreshold = 0.35 * Math.max(1, sizeRatio * 0.55);
+        if (cell.density < bandThreshold) continue;
+
+        if (cell.wordWeight < 0.12) continue;
+
         for (let seg of generateGlyphs(L, cell)) {
             // transform to page space
             let p1 = toPage(L, seg.x1, seg.y1), p2 = toPage(L, seg.x2, seg.y2);
