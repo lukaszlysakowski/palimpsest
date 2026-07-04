@@ -35,14 +35,21 @@ function regenerate(newSeed) {
     noiseSeed(state.masterSeed);
     state.layers = [];
     state.rubrication = [];
-    // Tasks 3-6 fill in generation here.
+    let L0 = makeLayer(0, state.masterSeed, 0, 1.0);
+    generateLayerContent(L0);
+    state.layers = [L0];
+    // Tasks 4-6 fill in additional layer generation here.
     renderAll();
 }
 
 function renderAll() {
     background(PAPER);
+    for (let L of state.layers) {
+        let inkScale = 1.0 - 0.22 * (state.layers.length - 1 - L.idx); // older = lighter weight
+        for (let seg of L.segments) drawSegment(seg, Math.max(0.45, inkScale));
+    }
     drawBorderAndSignature();
-    // Tasks 3-6 add layer + rubrication rendering here.
+    // Tasks 4-6 add rubrication rendering here.
 }
 
 function drawBorderAndSignature() {
@@ -150,4 +157,289 @@ function bezierOutsideMasks(seg, polys) {
         }
     }
     return out;
+}
+
+// ─── layer generation ───
+// Ported from Field Script (asemic_writing/index.js). Original globals now hang
+// off a layer object `L` (per-layer seed/frame/wave/word-noise state) or `ui`
+// (global maker controls). See task-3-brief.md rename table for the mapping.
+
+const FRAME = Math.ceil(Math.sqrt(PW * PW + PH * PH)); // 2714 — covers any rotation
+
+function toPage(L, x, y) {
+    // local frame is a FRAME×FRAME square centred on the page centre
+    let dx = x - FRAME / 2, dy = y - FRAME / 2;
+    let c = Math.cos(L.rotation), s = Math.sin(L.rotation);
+    return { x: PW / 2 + dx * c - dy * s, y: PH / 2 + dx * s + dy * c };
+}
+
+function makeLayer(idx, seed, rotation, coverage) {
+    let L = {
+        idx, seed, rotation, coverage,
+        frame: { size: FRAME },
+        waveFreq: [0, 2, 4, 7][ui.wave] + Math.floor(random(0, 2)),
+        phase: random(TWO_PI),
+        wordNoiseOffset: random(1000),
+        useBezier: random() < 0.6,
+        cells: [], segments: [], maskPolys: []
+    };
+    // coverage sub-region (page space): a random rect occupying `coverage` of the writable area
+    let wx = MARGIN.x, wy = MARGIN.top, ww = PW - 2 * MARGIN.x, wh = PH - MARGIN.top - MARGIN.bot;
+    let rw = ww * Math.sqrt(coverage), rh = wh * Math.sqrt(coverage);
+    L.region = { x: wx + random(0, ww - rw), y: wy + random(0, wh - rh), w: rw, h: rh };
+    if (idx === 0) {
+        // layer 0: always full coverage, zero rotation
+        L.region = { x: wx, y: wy, w: ww, h: wh };
+    }
+    return L;
+}
+
+function inRegion(L, p) {
+    return p.x >= L.region.x && p.x <= L.region.x + L.region.w
+        && p.y >= L.region.y && p.y <= L.region.y + L.region.h;
+}
+
+// ─── density field ────────────────────────────────────────────────────────────
+
+function getDensityAt(L, x, y) {
+    let cs = L.frame.size;
+    let t = y / cs;
+    let d = L.waveFreq === 0 ? 1 : (sin(t * TWO_PI * L.waveFreq + L.phase) + 1) / 2;
+    return d;
+}
+
+// Word spacing — slow X-axis noise creates "word" clusters within each band.
+// Returns 0 (gap) → 1 (dense word). Seeded via L.wordNoiseOffset.
+function getWordWeight(L, x, y) {
+    // Two overlapping noise scales: coarse = word length, fine = glyph-level variation
+    let coarse = noise(x * 0.008 + L.wordNoiseOffset, y * 0.003 + L.wordNoiseOffset + 50);
+    let fine   = noise(x * 0.025 + L.wordNoiseOffset + 100, y * 0.006 + L.wordNoiseOffset + 150);
+    return coarse * 0.7 + fine * 0.3;
+}
+
+// ─── recursive subdivision ────────────────────────────────────────────────────
+
+function subdivideCell(L, x, y, size, depth) {
+    let cs      = L.frame.size;
+    let maxDepth = ui.depth;
+    let mid     = { x: x + size / 2, y: y + size / 2 };
+    let density = getDensityAt(L, mid.x, mid.y);
+
+    let shouldSplit = depth < maxDepth
+        && size > cs / 64
+        && random() < density * 0.85;
+
+    if (shouldSplit) {
+        let h  = size / 2;
+        let w  = size * 0.08 * noise(x * 0.01, y * 0.01, depth * 0.5);
+        let sx = constrain(h + w * (random() > 0.5 ? 1 : -1), h * 0.65, h * 1.35);
+        let sy = constrain(h + w * (random() > 0.5 ? 1 : -1), h * 0.65, h * 1.35);
+
+        subdivideCell(L, x,      y,      sx,        depth+1);
+        subdivideCell(L, x + sx, y,      size - sx, depth+1);
+        subdivideCell(L, x,      y + sy, sx,        depth+1);
+        subdivideCell(L, x + sx, y + sy, size - sx, depth+1);
+    } else {
+        let frameCentre = { x: L.frame.size / 2, y: L.frame.size / 2 };
+        let cell = {
+            x, y, size, depth, density,
+            distFromCenter: dist(mid.x, mid.y, frameCentre.x, frameCentre.y)
+        };
+        L.cells.push(cell);
+        cell.wordWeight = getWordWeight(L, mid.x, mid.y);
+    }
+}
+
+// ─── wobble ───────────────────────────────────────────────────────────────────
+
+function wobble(x, y, seed) {
+    if (!ui.wobble) return { x, y };
+    return {
+        x: x + (noise(x * 0.01, y * 0.01, seed) - 0.5) * 8,
+        y: y + (noise(x * 0.01 + 100, y * 0.01 + 100, seed) - 0.5) * 8
+    };
+}
+
+// ─── glyph vocabulary ─────────────────────────────────────────────────────────
+
+function generateGlyphs(L, cell) {
+    let cs = L.frame.size;
+    let s  = cell.size;
+    let xo = cell.x;
+    let yo = cell.y;
+    let m  = s * 0.12;
+    let cx = xo + s / 2;
+    let cy = yo + s / 2;
+    let growthCenter = { x: L.frame.size / 2, y: L.frame.size / 2 };
+
+    let angle = atan2(growthCenter.y - cy, growthCenter.x - cx);
+    let tb    = constrain(s * 0.1 * sin(angle + noise(cx*0.005, cy*0.005) * 0.4 - 0.2), -s*0.2, s*0.2);
+
+    let sizeRatio  = s / (cs / 16);
+    let maxLines   = [6, 10, 16][ui.density];
+    let maxStrokes = max(1, floor(maxLines / max(1, sizeRatio)));
+    // Word weight modulates stroke count: "word-centre" cells get more strokes
+    let n = max(1, floor(random(1, maxStrokes + 1) * cell.density * cell.wordWeight));
+
+    let out = [];
+
+    if (L.useBezier) {
+        let baseType = floor(noise(cx * 0.006, cy * 0.006) * 8);
+
+        for (let a = 0; a < n; a++) {
+            let gt = (baseType + a) % 8;
+            let w  = random(0.35, 1.7);
+            let x1, y1, cx1, cy1, cx2, cy2, x2, y2;
+
+            if (gt === 0) {
+                x1  = xo + random(m*1.2, s-m*1.2);
+                y1  = yo + m;
+                x2  = constrain(x1 + random(-s*0.15, s*0.15) + tb*0.5, xo+m, xo+s-m);
+                y2  = yo + s - m;
+                cx1 = constrain(x1 + tb*0.3 + random(-s*0.15, s*0.15), xo+m*0.5, xo+s-m*0.5);
+                cy1 = yo + s*0.30;
+                cx2 = constrain(x2 - tb*0.3 + random(-s*0.15, s*0.15), xo+m*0.5, xo+s-m*0.5);
+                cy2 = yo + s*0.70;
+            } else if (gt === 1) {
+                x1  = xo + random(m, s-m);
+                y1  = yo + m;
+                x2  = xo + s * (x1 < cx ? 0.78 : 0.22);
+                y2  = yo + s - m*0.6;
+                cx1 = constrain(x1 + tb*0.2, xo+m, xo+s-m);
+                cy1 = yo + s*0.35;
+                cx2 = constrain(x2 + (x1 < cx ? s*0.18 : -s*0.18), xo+m, xo+s-m);
+                cy2 = yo + s*0.65;
+            } else if (gt === 2) {
+                x1  = xo + random(m, s*0.45);
+                y1  = yo + s*0.55 + random(0, s*0.18);
+                x2  = xo + random(s*0.55, s-m);
+                y2  = y1 + random(-s*0.08, s*0.08);
+                cx1 = constrain(x1 + (x2-x1)*0.25 + tb*0.2, xo+m, xo+s-m);
+                cy1 = yo + m*0.8;
+                cx2 = constrain(x2 - (x2-x1)*0.25 - tb*0.2, xo+m, xo+s-m);
+                cy2 = yo + m*0.8;
+            } else if (gt === 3) {
+                x1  = xo + random(m, s-m);
+                y1  = yo + m;
+                x2  = xo + random(m, s-m);
+                y2  = yo + s - m;
+                cx1 = constrain(xo + s*0.82 + tb*0.25, xo+m, xo+s-m);
+                cy1 = yo + s*0.22;
+                cx2 = constrain(xo + s*0.18 - tb*0.25, xo+m, xo+s-m);
+                cy2 = yo + s*0.78;
+            } else if (gt === 4) {
+                let rr = cos(angle) > 0;
+                x1  = xo + (rr ? m*1.5 : s-m*1.5);
+                y1  = yo + s*0.22;
+                x2  = x1;
+                y2  = yo + s*0.78;
+                let ax = rr ? xo+s*0.88 : xo+s*0.12;
+                cx1 = ax;  cy1 = yo + m*0.9;
+                cx2 = ax;  cy2 = yo + s - m*0.9;
+            } else if (gt === 5) {
+                let rr = cos(angle) <= 0;
+                x1  = xo + (rr ? m*1.5 : s-m*1.5);
+                y1  = yo + s*0.22;
+                x2  = x1;
+                y2  = yo + s*0.78;
+                let ax = rr ? xo+s*0.88 : xo+s*0.12;
+                cx1 = ax;  cy1 = yo + m*0.9;
+                cx2 = ax;  cy2 = yo + s - m*0.9;
+            } else if (gt === 6) {
+                x1  = xo + s*0.5;
+                y1  = yo + m;
+                x2  = x1 + random(-s*0.06, s*0.06);
+                y2  = yo + m + random(s*0.02, s*0.1);
+                cx1 = constrain(xo + s*0.88 + tb*0.15, xo+m, xo+s-m);
+                cy1 = yo + s*0.22;
+                cx2 = constrain(xo + s*0.12 - tb*0.15, xo+m, xo+s-m);
+                cy2 = yo + s*0.72;
+            } else {
+                x1  = xo + m;
+                y1  = yo + m;
+                x2  = xo + s - m;
+                y2  = yo + s - m;
+                cx1 = constrain(xo + s*0.65 + tb*0.25, xo+m, xo+s-m);
+                cy1 = yo + s*0.10;
+                cx2 = constrain(xo + s*0.10 - tb*0.25, xo+m, xo+s-m);
+                cy2 = yo + s*0.78;
+            }
+
+            out.push({ isBezier: true, x1, y1, cx1, cy1, cx2, cy2, x2, y2, depth: cell.depth, density: cell.density, w, layer: L.idx });
+        }
+
+    } else {
+        // Schotter-style: disorder increases as wordWeight decreases.
+        // Word-centre cells → vertical parallel marks. Word-edge cells → scattered, rotated.
+        let disorder  = 1.0 - cell.wordWeight;
+        let maxAngle  = HALF_PI * 0.65;  // up to ~58° at full disorder
+        // Organic lean from growth centre, scaled down in disordered zones
+        let leanBase  = s * 0.12 * sin(angle + noise(cx*0.005, cy*0.005) * 0.4 - 0.2) * cell.wordWeight;
+
+        for (let a = 0; a < n; a++) {
+            let randAngle = random(-maxAngle, maxAngle) * disorder;
+
+            // Line length: ordered = tall, disordered = variable/shorter
+            let heightFrac = 0.5 + cell.wordWeight * 0.45 + random(-0.12, 0.12) * disorder;
+            let lineLen    = s * constrain(heightFrac, 0.2, 0.95);
+
+            // Midpoint: neatly spaced when ordered, scattered when disordered
+            let spread = m * 1.2 + (s - m * 2.4) * (disorder * random() + (1 - disorder) * (a / max(1, n - 1)));
+            let midX   = xo + spread + leanBase * noise(a * 0.3, cx * 0.01);
+            let midY   = yo + s * 0.5 + random(-s * 0.06, s * 0.06) * disorder;
+
+            // Rotate about midpoint
+            let x1 = midX + sin(randAngle) * lineLen * 0.5;
+            let y1 = midY - cos(randAngle) * lineLen * 0.5;
+            let x2 = midX - sin(randAngle) * lineLen * 0.5;
+            let y2 = midY + cos(randAngle) * lineLen * 0.5;
+
+            let w = random(0.35, 1.5);
+
+            if (a % 2 === 0) {
+                out.push({ isBezier: false, x1, y1, x2, y2, depth: cell.depth, density: cell.density, w, layer: L.idx });
+            } else {
+                out.push({ isBezier: false, x1: x2, y1: y2, x2: x1, y2: y1, depth: cell.depth, density: cell.density, w, layer: L.idx });
+            }
+        }
+    }
+
+    return out;
+}
+
+// ─── layer content assembly ────────────────────────────────────────────────────
+
+function generateLayerContent(L) {
+    randomSeed(L.seed); noiseSeed(L.seed);
+    L.cells = [];
+    subdivideCell(L, 0, 0, FRAME, 0);
+    for (let cell of L.cells) {
+        if (cell.density * cell.wordWeight < 0.18) continue; // gaps between words
+        for (let seg of generateGlyphs(L, cell)) {
+            // transform to page space
+            let p1 = toPage(L, seg.x1, seg.y1), p2 = toPage(L, seg.x2, seg.y2);
+            let mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+            if (!inRegion(L, mid)) continue;
+            seg.x1 = p1.x; seg.y1 = p1.y; seg.x2 = p2.x; seg.y2 = p2.y;
+            if (seg.isBezier) {
+                let c1 = toPage(L, seg.cx1, seg.cy1), c2 = toPage(L, seg.cx2, seg.cy2);
+                seg.cx1 = c1.x; seg.cy1 = c1.y; seg.cx2 = c2.x; seg.cy2 = c2.y;
+            }
+            L.segments.push(seg);
+        }
+    }
+}
+
+// ─── rendering ──────────────────────────────────────────────────────────────
+
+function drawSegment(seg, inkScale) {
+    stroke(INK); strokeWeight(seg.w * inkScale); noFill();
+    let i = seg.x1 * 0.01;
+    let p1 = wobble(seg.x1, seg.y1, i), p2 = wobble(seg.x2, seg.y2, i + 50);
+    if (seg.isBezier) {
+        let c1 = wobble(seg.cx1, seg.cy1, i + 15), c2 = wobble(seg.cx2, seg.cy2, i + 30);
+        bezier(p1.x, p1.y, c1.x, c1.y, c2.x, c2.y, p2.x, p2.y);
+    } else {
+        line(p1.x, p1.y, p2.x, p2.y);
+    }
 }
