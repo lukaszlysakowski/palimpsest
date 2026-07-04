@@ -26,6 +26,8 @@ function setup() {
     pixelDensity(1);
     document.getElementById('randomizeBtn').onclick = () => regenerate(true);
     document.getElementById('refreshBtn').onclick   = () => regenerate(false);
+    document.getElementById('svgBtn').onclick = exportSVG;
+    document.getElementById('pngBtn').onclick = exportPNG;
     setupControls();
     regenerate(true);
     noLoop();
@@ -680,6 +682,50 @@ function checkErasureInvariant() {
     }
     return { ok: true };
 }
+
+// ─── export ───────────────────────────────────────────────────────────────
+
+function segToPath(seg, i) {
+    let p1 = wobble(seg.x1, seg.y1, i * 0.1), p2 = wobble(seg.x2, seg.y2, i * 0.1 + 50);
+    if (seg.isBezier) {
+        let c1 = wobble(seg.cx1, seg.cy1, i * 0.1 + 15), c2 = wobble(seg.cx2, seg.cy2, i * 0.1 + 30);
+        return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} C ${c1.x.toFixed(2)} ${c1.y.toFixed(2)} ${c2.x.toFixed(2)} ${c2.y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+    }
+    return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} L ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+}
+
+function svgLayer(label, color, weight, paths, extra = '') {
+    let g = `  <g inkscape:groupmode="layer" inkscape:label="${label}" fill="none" stroke="${color}" stroke-width="${weight}" stroke-linecap="round"${extra}>\n`;
+    for (let p of paths) g += `    <path d="${p}"/>\n`;
+    return g + `  </g>\n`;
+}
+
+function buildSVG() {
+    let svg = `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="${PW}" height="${PH}" viewBox="0 0 ${PW} ${PH}">\n  <rect width="100%" height="100%" fill="${PAPER}"/>\n`;
+    svg += svgLayer('Border', INK, 1,
+        [`M ${MARGIN.x} ${MARGIN.top} H ${PW - MARGIN.x} V ${PH - MARGIN.bot} H ${MARGIN.x} Z`]);
+    let nL = state.layers.length;
+    for (let L of state.layers) {
+        let inkScale = Math.max(0.45, 1.0 - 0.22 * (nL - 1 - L.idx));
+        svg += svgLayer(`Layer ${L.idx + 1}${L.idx === 0 ? ' (oldest)' : ''}`, INK, (0.5 * inkScale).toFixed(2),
+            L.segments.map(segToPath));
+    }
+    svg += svgLayer('Rubrication', RED, 0.65, state.rubrication.map(segToPath));
+    let n = new Date();
+    let stamp = `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`;
+    svg += `  <g inkscape:groupmode="layer" inkscape:label="Signature"><text x="${MARGIN.x}" y="${PH - MARGIN.bot + Math.round(PW * 0.024)}" font-family="Courier New, Courier, monospace" font-size="${Math.round(PW * 0.013)}" fill="${INK}">Palimpsest · seed ${state.masterSeed}  ${stamp}</text></g>\n`;
+    return svg + `</svg>`;
+}
+
+function exportSVG() {
+    let blob = new Blob([buildSVG()], { type: 'image/svg+xml' });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.href = url; a.download = `palimpsest_${state.masterSeed}.svg`; a.click();
+    URL.revokeObjectURL(url);
+}
+
+function exportPNG() { saveCanvas(`palimpsest_${state.masterSeed}`, 'png'); }
 
 // ─── rendering ──────────────────────────────────────────────────────────────
 
