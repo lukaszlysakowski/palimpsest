@@ -54,22 +54,23 @@ function pickRotation(idx) {
 
 function planLayers() {
     let n = pickLayerCount();
-    let plans = [];
+    let layers = [];
 
-    // First loop: collect all plan-level randoms (layer count, rotations, coverages)
+    // First loop: draw all plan-level randoms (count, rotations, coverages, makeLayer details)
+    // These all happen under the master seed stream, establishing the plan deterministically.
     for (let i = 0; i < n; i++) {
         let coverage = i === 0 ? 1.0 : random(0.6, 0.9) * Math.pow(0.85, i - 1);
         let rotation = pickRotation(i);
-        plans.push({ idx: i, coverage, rotation, seed: state.masterSeed + i * 7919 });
-    }
-
-    // Second loop: generate each layer's content
-    state.layers = [];
-    for (let plan of plans) {
-        let L = makeLayer(plan.idx, plan.seed, plan.rotation, plan.coverage);
-        if (plan.idx === 0) {
+        let L = makeLayer(i, state.masterSeed + i * 7919, rotation, coverage);
+        if (i === 0) {
             L.region = { x: MARGIN.x, y: MARGIN.top, w: PW - 2 * MARGIN.x, h: PH - MARGIN.top - MARGIN.bot };
         }
+        layers.push(L);
+    }
+
+    // Second loop: only generate content (per-layer reseeding happens inside generateLayerContent)
+    state.layers = [];
+    for (let L of layers) {
         generateLayerContent(L);
         state.layers.push(L);
     }

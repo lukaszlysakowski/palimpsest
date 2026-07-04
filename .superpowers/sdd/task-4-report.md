@@ -94,3 +94,49 @@ None. All automated checks pass; determinism contract maintained.
 3. Containment sweep (8 seeds, layerCount=4): 0 violations found — every segment's endpoints and bezier control points confirmed inside their layer's region
 
 **Result:** Segments now strictly contained; no marks visible outside the page frame.
+
+## Fix: makeLayer moved to plan loop (determinism contract)
+
+**Problem:** The determinism contract requires ALL plan-level randoms to be drawn under the master seed before any content generation. Previously, `planLayers()` did:
+- Loop 1: Drew coverage, rotation, seed into a `plans` array
+- Loop 2: Called `makeLayer()` (which draws waveFreq, phase, wordNoiseOffset, useBezier, region randoms), then `generateLayerContent()`
+
+This violated the contract: `makeLayer` draws were happening in Loop 2, AFTER planLayers() returned from Loop 1. Worse, `generateLayerContentOnce()` calls `randomSeed(L.seed)` without restoring, so layer i+1's `makeLayer` randoms depended on layer i's retry count.
+
+**Fix applied:**
+- Restructured `planLayers()` into strict two-phase:
+  1. **Loop 1 (planning):** All master-seed randoms drawn here, including `pickLayerCount()`, `pickRotation()`, `coverage`, AND `makeLayer()`. Full layer objects with {waveFreq, phase, wordNoiseOffset, useBezier, region} are collected. Layer 0's region override applied before push.
+  2. **Loop 2 (content):** Only `generateLayerContent(L)` called for each pre-built layer. Per-layer reseeding happens inside this function; plan-level attributes remain stable.
+- Renamed `plans` array to `layers` (temporary collection), then reassign `state.layers` in Loop 2 to maintain correct order (oldest first).
+
+**Key invariant:** Plan attributes {waveFreq, phase, wordNoiseOffset, useBezier, region} are now pure functions of masterSeed alone, independent of generateLayerContent retry counts.
+
+**Verification:**
+
+1. **Syntax check:**
+   ```
+   node --check index.js → OK
+   ```
+
+2. **Existing tests pass:**
+   ```
+   node .superpowers/sdd/task-4-verify.js → PASS (all 7 tests)
+   ```
+   - Layer count distribution: 4/6/2 across 12 seeds ✓
+   - Fixed layer count: exactly 2 layers ✓
+   - Rotation pool effects: classic mode → 0, 90°, 90° ✓
+   - Coverage decay: bounded by 0.9 for upper layers ✓
+   - Non-zero rotations: confirmed ✓
+   - Segments: 2078 total, 0 empty layers ✓
+   - Determinism: identical segment counts across runs (818, 262) ✓
+
+3. **Plan-level RNG isolation (new test):**
+   Ran three master seeds {42, 777, 1337} with layerCount=4:
+   - Each seed run twice in succession
+   - Captured layer plan attributes: {waveFreq, phase, wordNoiseOffset, useBezier, region}
+   - Compared all 4 layers per seed across runs
+   - Result: **PASS** — all plan attributes identical to floating-point precision (< 1e-9 epsilon)
+   
+   This proves plan-level randoms are deterministic and isolated from content generation retry counts.
+
+**Result:** Determinism contract now upheld. `planLayers()` draws all master-stream randoms before any per-layer reseeding, guaranteeing reproducible layer plans from a fixed masterSeed.
