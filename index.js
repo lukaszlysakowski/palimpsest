@@ -685,10 +685,11 @@ function checkErasureInvariant() {
 
 // ─── export ───────────────────────────────────────────────────────────────
 
-function segToPath(seg, i) {
-    let p1 = wobble(seg.x1, seg.y1, i * 0.1), p2 = wobble(seg.x2, seg.y2, i * 0.1 + 50);
+function segToPath(seg) {
+    let i = seg.x1 * 0.01;
+    let p1 = wobble(seg.x1, seg.y1, i), p2 = wobble(seg.x2, seg.y2, i + 50);
     if (seg.isBezier) {
-        let c1 = wobble(seg.cx1, seg.cy1, i * 0.1 + 15), c2 = wobble(seg.cx2, seg.cy2, i * 0.1 + 30);
+        let c1 = wobble(seg.cx1, seg.cy1, i + 15), c2 = wobble(seg.cx2, seg.cy2, i + 30);
         return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} C ${c1.x.toFixed(2)} ${c1.y.toFixed(2)} ${c2.x.toFixed(2)} ${c2.y.toFixed(2)} ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
     }
     return `M ${p1.x.toFixed(2)} ${p1.y.toFixed(2)} L ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
