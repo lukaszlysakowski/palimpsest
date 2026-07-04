@@ -412,7 +412,12 @@ function generateGlyphs(L, cell) {
 function generateLayerContent(L) {
     randomSeed(L.seed); noiseSeed(L.seed);
     L.cells = [];
-    subdivideCell(L, 0, 0, FRAME, 0);
+    let baseSize = FRAME / 4;
+    for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 4; col++) {
+            subdivideCell(L, col * baseSize, row * baseSize, baseSize, 0);
+        }
+    }
     for (let cell of L.cells) {
         if (cell.density * cell.wordWeight < 0.18) continue; // gaps between words
         for (let seg of generateGlyphs(L, cell)) {
