@@ -74,6 +74,11 @@ function planLayers() {
         generateLayerContent(L);
         state.layers.push(L);
     }
+
+    // Third pass: mask emission + erasure. Deterministic given the layers above —
+    // must not call random().
+    for (let L of state.layers) emitMasks(L);
+    eraseUnder(state.layers);
 }
 
 function regenerate(newSeed) {
@@ -520,6 +525,74 @@ function generateLayerContent(L) {
     }
     L.cells = best.cells;
     L.segments = best.segments;
+}
+
+// ─── erasure ──────────────────────────────────────────────────────────────
+
+const MASK_PAD = { tight: 0.02, normal: 0.06, generous: 0.11 };
+
+function emitMasks(L) {
+    L.maskPolys = [];
+    let pad;
+    for (let cell of L.cells) {
+        if (cell.density * cell.wordWeight < 0.30) continue;   // mask only real word clusters
+        pad = cell.size * MASK_PAD[ui.maskPadding];
+        let x0 = cell.x - pad, y0 = cell.y - pad, x1 = cell.x + cell.size + pad, y1 = cell.y + cell.size + pad;
+        let quad = [toPage(L, x0, y0), toPage(L, x1, y0), toPage(L, x1, y1), toPage(L, x0, y1)];
+        let mid = { x: (quad[0].x + quad[2].x) / 2, y: (quad[0].y + quad[2].y) / 2 };
+        if (inRegion(L, mid)) L.maskPolys.push(quad);
+    }
+    L.activeMasks = L.maskPolys;
+}
+
+function inkLength(segs) {
+    return segs.reduce((t, s) => t + Math.hypot(s.x2 - s.x1, s.y2 - s.y1), 0);
+}
+
+function clipLayerAgainst(L, masks) {
+    let out = [];
+    for (let seg of L.segments) {
+        if (seg.isBezier) {
+            out.push(...bezierOutsideMasks(seg, masks));
+        } else {
+            for (let k of segmentOutsideMasks(seg.x1, seg.y1, seg.x2, seg.y2, masks)) {
+                out.push({ ...seg, x1: k[0], y1: k[1], x2: k[2], y2: k[3] });
+            }
+        }
+    }
+    return out;
+}
+
+function eraseUnder(layers) {
+    for (let i = 0; i < layers.length - 1; i++) {
+        let L = layers[i];
+        L.originalSegments = L.segments;
+        let masks = [];
+        for (let j = i + 1; j < layers.length; j++) masks.push(...layers[j].activeMasks);
+        let before = inkLength(L.segments);
+        L.segments = clipLayerAgainst(L, masks);
+        // survival floor: old text must remain present
+        if (ui.survivalFloor && before > 0 && inkLength(L.segments) / before < 0.25) {
+            for (let j = i + 1; j < layers.length; j++) {
+                layers[j].activeMasks = layers[j].activeMasks.filter((_, k) => k % 2 === 0);
+            }
+            let thinned = [];
+            for (let j = i + 1; j < layers.length; j++) thinned.push(...layers[j].activeMasks);
+            L.segments = clipLayerAgainst({ ...L, segments: L.originalSegments }, thinned);
+        }
+    }
+}
+
+function checkErasureInvariant() {
+    for (let i = 0; i < state.layers.length - 1; i++) {
+        let masks = [];
+        for (let j = i + 1; j < state.layers.length; j++) masks.push(...state.layers[j].activeMasks);
+        for (let seg of state.layers[i].segments) {
+            let mx = (seg.x1 + seg.x2) / 2, my = (seg.y1 + seg.y2) / 2;
+            if (masks.some(p => pointInPolygon(mx, my, p))) return { ok: false, layer: i, seg };
+        }
+    }
+    return { ok: true };
 }
 
 // ─── rendering ──────────────────────────────────────────────────────────────
