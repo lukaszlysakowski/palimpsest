@@ -26,8 +26,32 @@ function setup() {
     pixelDensity(1);
     document.getElementById('randomizeBtn').onclick = () => regenerate(true);
     document.getElementById('refreshBtn').onclick   = () => regenerate(false);
+    setupControls();
     regenerate(true);
     noLoop();
+}
+
+// ─── controls ───
+
+function cycleCtrl(btnId, valId, options, labels, uiKey) {
+    document.getElementById(btnId).onclick = () => {
+        let i = (options.indexOf(ui[uiKey]) + 1) % options.length;
+        ui[uiKey] = options[i];
+        document.getElementById(valId).textContent = labels ? labels[i] : String(options[i]);
+        regenerate(false);
+    };
+}
+
+function setupControls() {
+    cycleCtrl('layerCountBtn',   'layerCountVal',   ['random','2','3','4'], null, 'layerCount');
+    cycleCtrl('rotationPoolBtn', 'rotationPoolVal', ['classic','diagonal','mixed'], null, 'rotationPool');
+    cycleCtrl('waveBtn',         'waveVal',         [0,1,2,3], ['None','Sparse','Medium','Busy'], 'wave');
+    cycleCtrl('densityBtn',      'densityVal',      [0,1,2], ['Light','Medium','Dense'], 'density');
+    cycleCtrl('depthBtn',        'depthVal',        [5,6,7], null, 'depth');
+    cycleCtrl('maskPaddingBtn',  'maskPaddingVal',  ['tight','normal','generous'], null, 'maskPadding');
+    cycleCtrl('survivalFloorBtn','survivalFloorVal',[true,false], ['on','off'], 'survivalFloor');
+    cycleCtrl('rubricationBtn',  'rubricationVal',  ['none','rare','present','rich'], null, 'rubrication');
+    cycleCtrl('wobbleBtn',       'wobbleVal',       [true,false], ['on','off'], 'wobble');
 }
 
 // ─── layer planning ───

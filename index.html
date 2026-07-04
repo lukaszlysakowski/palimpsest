@@ -216,7 +216,36 @@
             <div class="sidebar-title">Palimpsest</div>
             <div class="sidebar-sub">overwritten · erased · rubricated</div>
         </div>
-        <div class="sidebar-body" id="controls"><!-- sections added in Task 7 --></div>
+        <div class="sidebar-body" id="controls">
+            <div class="section">
+                <div class="section-label">Layers</div>
+                <button class="ctrl" id="layerCountBtn"><span class="ctrl-name">count</span><span class="ctrl-val" id="layerCountVal">random</span></button>
+                <button class="ctrl" id="rotationPoolBtn"><span class="ctrl-name">rotation</span><span class="ctrl-val" id="rotationPoolVal">classic</span></button>
+            </div>
+            <div class="rule"></div>
+            <div class="section">
+                <div class="section-label">Field</div>
+                <button class="ctrl" id="waveBtn"><span class="ctrl-name">wave</span><span class="ctrl-val" id="waveVal">Medium</span></button>
+                <button class="ctrl" id="densityBtn"><span class="ctrl-name">density</span><span class="ctrl-val" id="densityVal">Medium</span></button>
+                <button class="ctrl" id="depthBtn"><span class="ctrl-name">depth</span><span class="ctrl-val" id="depthVal">6</span></button>
+            </div>
+            <div class="rule"></div>
+            <div class="section">
+                <div class="section-label">Erasure</div>
+                <button class="ctrl" id="maskPaddingBtn"><span class="ctrl-name">padding</span><span class="ctrl-val" id="maskPaddingVal">normal</span></button>
+                <button class="ctrl" id="survivalFloorBtn"><span class="ctrl-name">survival floor</span><span class="ctrl-val" id="survivalFloorVal">on</span></button>
+            </div>
+            <div class="rule"></div>
+            <div class="section">
+                <div class="section-label">Rubrication</div>
+                <button class="ctrl" id="rubricationBtn"><span class="ctrl-name">amount</span><span class="ctrl-val" id="rubricationVal">rare</span></button>
+            </div>
+            <div class="rule"></div>
+            <div class="section">
+                <div class="section-label">Style</div>
+                <button class="ctrl" id="wobbleBtn"><span class="ctrl-name">wobble</span><span class="ctrl-val" id="wobbleVal">on</span></button>
+            </div>
+        </div>
         <div class="sidebar-footer">
             <div class="act-row">
                 <button class="act primary" id="randomizeBtn">randomize</button>
