@@ -409,9 +409,10 @@ function generateGlyphs(L, cell) {
 
 // ─── layer content assembly ────────────────────────────────────────────────────
 
-function generateLayerContent(L) {
+function generateLayerContentOnce(L) {
     randomSeed(L.seed); noiseSeed(L.seed);
     L.cells = [];
+    L.segments = [];
     let baseSize = FRAME / 4;
     for (let row = 0; row < 4; row++) {
         for (let col = 0; col < 4; col++) {
@@ -433,6 +434,22 @@ function generateLayerContent(L) {
             L.segments.push(seg);
         }
     }
+}
+
+function generateLayerContent(L) {
+    const minSegs = Math.max(60, Math.round(150 * L.coverage));
+    let best = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+        generateLayerContentOnce(L);
+        if (best === null || L.segments.length > best.segments.length) {
+            best = { cells: L.cells, segments: L.segments };
+        }
+        if (L.segments.length >= minSegs) break;
+        L.seed += 104729;          // derived retry seed
+        L.phase = (L.phase + 1.7) % (Math.PI * 2); // shift bands off the alias
+    }
+    L.cells = best.cells;
+    L.segments = best.segments;
 }
 
 // ─── rendering ──────────────────────────────────────────────────────────────
