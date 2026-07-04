@@ -79,6 +79,9 @@ function planLayers() {
     // must not call random().
     for (let L of state.layers) emitMasks(L);
     eraseUnder(state.layers);
+
+    // Fourth pass: rubrication — rare red marks plotted on top, never erased
+    generateRubrication();
 }
 
 function regenerate(newSeed) {
@@ -92,14 +95,60 @@ function regenerate(newSeed) {
     renderAll();
 }
 
+// ─── rubrication ───
+
+const RUBRIC_COUNT = { none: [0, 0], rare: [0, 2], present: [1, 3], rich: [2, 5] };
+
+function generateRubrication() {
+    state.rubrication = [];
+    let [lo, hi] = RUBRIC_COUNT[ui.rubrication];
+    let n = Math.floor(random(lo, hi + 1));
+    let newest = state.layers[state.layers.length - 1];
+
+    for (let f = 0; f < n; f++) {
+        let kind = random();
+        if (kind < 0.4 && newest.cells.length) {
+            // Initial: oversized glyph at a band start on the newest layer, overdraw-heavy
+            let cell = { ...random(newest.cells) };
+            cell.size *= 2.2;
+            for (let seg of generateGlyphs(newest, cell)) {
+                for (let off = -1; off <= 1; off++) {         // 3 parallel passes
+                    let o = off * 1.4;
+                    let p1 = toPage(newest, seg.x1 + o, seg.y1), p2 = toPage(newest, seg.x2 + o, seg.y2);
+                    state.rubrication.push({ isBezier: false, x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y,
+                                             depth: seg.depth, density: 1, w: seg.w * 1.3, red: true });
+                }
+            }
+        } else if (kind < 0.75) {
+            // Marginal annotation: short glyph run in a side margin, slightly rotated
+            let mL = makeLayer(99, state.masterSeed + 31 + f, radians(random(-8, 8)), 0.05);
+            let side = random() < 0.5;
+            mL.region = { x: side ? 6 : PW - MARGIN.x + 6, y: random(MARGIN.top, PH * 0.7),
+                          w: MARGIN.x - 12, h: PH * 0.15 };
+            generateLayerContent(mL);
+            for (let seg of mL.segments.slice(0, 40)) state.rubrication.push({ ...seg, red: true });
+        } else {
+            // Rubricated run: one word-cluster of the newest layer re-inked red
+            let masks = newest.maskPolys;
+            if (!masks.length) continue;
+            let poly = random(masks);
+            let runSegs = newest.segments.filter(s =>
+                pointInPolygon((s.x1 + s.x2) / 2, (s.y1 + s.y2) / 2, poly));
+            for (let seg of runSegs) state.rubrication.push({ ...seg, red: true });
+            newest.segments = newest.segments.filter(s => !runSegs.includes(s));
+        }
+    }
+}
+
 function renderAll() {
     background(PAPER);
     for (let L of state.layers) {
         let inkScale = 1.0 - 0.22 * (state.layers.length - 1 - L.idx); // older = lighter weight
         for (let seg of L.segments) drawSegment(seg, Math.max(0.45, inkScale));
     }
+    // Render rubrication last, with red stroke
+    for (let seg of state.rubrication) drawSegment(seg, 1.0);
     drawBorderAndSignature();
-    // Tasks 4-6 add rubrication rendering here.
 }
 
 function drawBorderAndSignature() {
@@ -611,7 +660,8 @@ function checkErasureInvariant() {
 // ─── rendering ──────────────────────────────────────────────────────────────
 
 function drawSegment(seg, inkScale) {
-    stroke(INK); strokeWeight(seg.w * inkScale); noFill();
+    if (seg.red) stroke(RED); else stroke(INK);
+    strokeWeight(seg.w * inkScale); noFill();
     let i = seg.x1 * 0.01;
     let p1 = wobble(seg.x1, seg.y1, i), p2 = wobble(seg.x2, seg.y2, i + 50);
     if (seg.isBezier) {
