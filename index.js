@@ -583,13 +583,26 @@ function eraseUnder(layers) {
     }
 }
 
+function segmentViolates(seg, masks) {
+    if (seg.isBezier) {
+        for (let i = 0; i <= 8; i++) {
+            let t = i / 8;
+            let x = bezierPoint4(seg.x1, seg.cx1, seg.cx2, seg.x2, t);
+            let y = bezierPoint4(seg.y1, seg.cy1, seg.cy2, seg.y2, t);
+            if (masks.some(p => pointInPolygon(x, y, p))) return true;
+        }
+        return false;
+    }
+    let mx = (seg.x1 + seg.x2) / 2, my = (seg.y1 + seg.y2) / 2;
+    return masks.some(p => pointInPolygon(mx, my, p));
+}
+
 function checkErasureInvariant() {
     for (let i = 0; i < state.layers.length - 1; i++) {
         let masks = [];
         for (let j = i + 1; j < state.layers.length; j++) masks.push(...state.layers[j].activeMasks);
         for (let seg of state.layers[i].segments) {
-            let mx = (seg.x1 + seg.x2) / 2, my = (seg.y1 + seg.y2) / 2;
-            if (masks.some(p => pointInPolygon(mx, my, p))) return { ok: false, layer: i, seg };
+            if (segmentViolates(seg, masks)) return { ok: false, layer: i, seg };
         }
     }
     return { ok: true };
