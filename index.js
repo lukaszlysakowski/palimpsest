@@ -30,16 +30,59 @@ function setup() {
     noLoop();
 }
 
+// ─── layer planning ───
+
+function pickLayerCount() {
+    if (ui.layerCount !== 'random') return parseInt(ui.layerCount, 10);
+    let r = random();                     // weighted: 2 common, 4 rare
+    return r < 0.45 ? 2 : r < 0.85 ? 3 : 4;
+}
+
+function pickRotation(idx) {
+    if (idx === 0) return 0;
+    let pool;
+    if      (ui.rotationPool === 'classic')  pool = [HALF_PI];
+    else if (ui.rotationPool === 'diagonal') pool = [radians(random(5, 15)) * (random() < 0.5 ? -1 : 1)];
+    else { // mixed — weighted: 90° likely, diagonal next, 45° rare
+        let r = random();
+        pool = r < 0.55 ? [HALF_PI]
+             : r < 0.90 ? [radians(random(5, 15)) * (random() < 0.5 ? -1 : 1)]
+             : [radians(45) * (random() < 0.5 ? -1 : 1)];
+    }
+    return pool[0];
+}
+
+function planLayers() {
+    let n = pickLayerCount();
+    let plans = [];
+
+    // First loop: collect all plan-level randoms (layer count, rotations, coverages)
+    for (let i = 0; i < n; i++) {
+        let coverage = i === 0 ? 1.0 : random(0.6, 0.9) * Math.pow(0.85, i - 1);
+        let rotation = pickRotation(i);
+        plans.push({ idx: i, coverage, rotation, seed: state.masterSeed + i * 7919 });
+    }
+
+    // Second loop: generate each layer's content
+    state.layers = [];
+    for (let plan of plans) {
+        let L = makeLayer(plan.idx, plan.seed, plan.rotation, plan.coverage);
+        if (plan.idx === 0) {
+            L.region = { x: MARGIN.x, y: MARGIN.top, w: PW - 2 * MARGIN.x, h: PH - MARGIN.top - MARGIN.bot };
+        }
+        generateLayerContent(L);
+        state.layers.push(L);
+    }
+}
+
 function regenerate(newSeed) {
     if (newSeed) state.masterSeed = Math.floor(Math.random() * 1e9);
     randomSeed(state.masterSeed);
     noiseSeed(state.masterSeed);
     state.layers = [];
     state.rubrication = [];
-    let L0 = makeLayer(0, state.masterSeed, 0, 1.0);
-    generateLayerContent(L0);
-    state.layers = [L0];
-    // Tasks 4-6 fill in additional layer generation here.
+    planLayers();
+    // Tasks 5-6 fill in additional layer generation here.
     renderAll();
 }
 
