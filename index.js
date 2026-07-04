@@ -491,11 +491,13 @@ function generateLayerContentOnce(L) {
         for (let seg of generateGlyphs(L, cell)) {
             // transform to page space
             let p1 = toPage(L, seg.x1, seg.y1), p2 = toPage(L, seg.x2, seg.y2);
-            let mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
-            if (!inRegion(L, mid)) continue;
+            // Keep segment only if both endpoints are inside the region
+            if (!inRegion(L, p1) || !inRegion(L, p2)) continue;
             seg.x1 = p1.x; seg.y1 = p1.y; seg.x2 = p2.x; seg.y2 = p2.y;
             if (seg.isBezier) {
                 let c1 = toPage(L, seg.cx1, seg.cy1), c2 = toPage(L, seg.cx2, seg.cy2);
+                // For bezier, also require both control points inside the region
+                if (!inRegion(L, c1) || !inRegion(L, c2)) continue;
                 seg.cx1 = c1.x; seg.cy1 = c1.y; seg.cx2 = c2.x; seg.cy2 = c2.y;
             }
             L.segments.push(seg);
