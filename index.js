@@ -136,7 +136,7 @@ function regenerate(newSeed) {
 
 // ─── rubrication ───
 
-const RUBRIC_COUNT = { none: [0, 0], rare: [1, 3], present: [2, 4], rich: [3, 6] };
+const RUBRIC_COUNT = { none: [0, 0], rare: [1, 3], present: [3, 5], rich: [3, 6] };
 
 function generateRubrication() {
     state.rubrication = [];
