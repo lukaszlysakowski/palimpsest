@@ -24,8 +24,8 @@ function setup() {
     let c = createCanvas(PW, PH);
     c.parent('canvas-container');
     pixelDensity(1);
-    document.getElementById('randomizeBtn').onclick = () => regenerate(true);
-    document.getElementById('refreshBtn').onclick   = () => regenerate(false);
+    document.getElementById('randomizeBtn').onclick = randomizeAll;
+    document.getElementById('refreshBtn').onclick   = () => regenerate(true);
     document.getElementById('svgBtn').onclick = exportSVG;
     document.getElementById('pngBtn').onclick = exportPNG;
     setupControls();
@@ -44,16 +44,29 @@ function cycleCtrl(btnId, valId, options, labels, uiKey) {
     };
 }
 
+const CONTROL_DEFS = [
+    ['layerCountBtn',   'layerCountVal',   ['random','2','3','4'], null, 'layerCount'],
+    ['rotationPoolBtn', 'rotationPoolVal', ['classic','diagonal','mixed'], null, 'rotationPool'],
+    ['waveBtn',         'waveVal',         [0,1,2,3], ['None','Sparse','Medium','Busy'], 'wave'],
+    ['densityBtn',      'densityVal',      [0,1,2], ['Light','Medium','Dense'], 'density'],
+    ['depthBtn',        'depthVal',        [5,6,7], null, 'depth'],
+    ['maskPaddingBtn',  'maskPaddingVal',  ['tight','normal','generous'], null, 'maskPadding'],
+    ['survivalFloorBtn','survivalFloorVal',[true,false], ['on','off'], 'survivalFloor'],
+    ['rubricationBtn',  'rubricationVal',  ['none','rare','present','rich'], null, 'rubrication'],
+    ['wobbleBtn',       'wobbleVal',       [true,false], ['on','off'], 'wobble']
+];
+
 function setupControls() {
-    cycleCtrl('layerCountBtn',   'layerCountVal',   ['random','2','3','4'], null, 'layerCount');
-    cycleCtrl('rotationPoolBtn', 'rotationPoolVal', ['classic','diagonal','mixed'], null, 'rotationPool');
-    cycleCtrl('waveBtn',         'waveVal',         [0,1,2,3], ['None','Sparse','Medium','Busy'], 'wave');
-    cycleCtrl('densityBtn',      'densityVal',      [0,1,2], ['Light','Medium','Dense'], 'density');
-    cycleCtrl('depthBtn',        'depthVal',        [5,6,7], null, 'depth');
-    cycleCtrl('maskPaddingBtn',  'maskPaddingVal',  ['tight','normal','generous'], null, 'maskPadding');
-    cycleCtrl('survivalFloorBtn','survivalFloorVal',[true,false], ['on','off'], 'survivalFloor');
-    cycleCtrl('rubricationBtn',  'rubricationVal',  ['none','rare','present','rich'], null, 'rubrication');
-    cycleCtrl('wobbleBtn',       'wobbleVal',       [true,false], ['on','off'], 'wobble');
+    for (let d of CONTROL_DEFS) cycleCtrl(...d);
+}
+
+function randomizeAll() {
+    for (let [, valId, options, labels, uiKey] of CONTROL_DEFS) {
+        let i = Math.floor(Math.random() * options.length);
+        ui[uiKey] = options[i];
+        document.getElementById(valId).textContent = labels ? labels[i] : String(options[i]);
+    }
+    regenerate(true);
 }
 
 // ─── layer planning ───
