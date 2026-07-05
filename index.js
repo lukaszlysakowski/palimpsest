@@ -136,7 +136,7 @@ function regenerate(newSeed) {
 
 // ─── rubrication ───
 
-const RUBRIC_COUNT = { none: [0, 0], rare: [0, 2], present: [1, 3], rich: [2, 5] };
+const RUBRIC_COUNT = { none: [0, 0], rare: [1, 3], present: [2, 4], rich: [3, 6] };
 
 function generateRubrication() {
     state.rubrication = [];
@@ -165,7 +165,7 @@ function generateRubrication() {
             mL.region = { x: side ? 6 : PW - MARGIN.x + 6, y: random(MARGIN.top, PH * 0.7),
                           w: MARGIN.x - 12, h: PH * 0.15 };
             generateLayerContent(mL);
-            for (let seg of mL.segments.slice(0, 40)) state.rubrication.push({ ...seg, red: true });
+            for (let seg of mL.segments.slice(0, 60)) state.rubrication.push({ ...seg, red: true });
         } else {
             // Rubricated run: one word-cluster of the newest layer re-inked red
             let masks = newest.maskPolys;
