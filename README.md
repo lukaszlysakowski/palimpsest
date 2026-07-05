@@ -2,7 +2,7 @@
 
 **Overwritten · erased · rubricated** — generative manuscript pages where successive hands of asemic script erase the writing beneath them.
 
-*Not yet published — local project. GitHub repo and live maker to come.*
+**[Live demo →](https://lukaszlysakowski.github.io/palimpsest/)**
 
 ---
 
